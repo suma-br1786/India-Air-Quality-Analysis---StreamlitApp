@@ -8,131 +8,34 @@ Original file is located at
 """
 
 import streamlit as st
-import pandas as pd
-
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.linear_model import Ridge, LogisticRegression
 
 
-def make_aqi_bucket(aqi):
-    if aqi <= 50:
-        return "Good"
-    if aqi <= 100:
-        return "Satisfactory"
-    if aqi <= 200:
-        return "Moderate"
-    if aqi <= 300:
-        return "Poor"
-    if aqi <= 400:
-        return "Very Poor"
-    return "Severe"
+def calculate_aqi_pm25(pm25):
+    if pm25 <= 12:
+        return 50, "Good"
+    elif pm25 <= 35.4:
+        return 100, "Satisfactory"
+    elif pm25 <= 55.4:
+        return 200, "Moderate"
+    elif pm25 <= 150.4:
+        return 300, "Poor"
+    elif pm25 <= 250.4:
+        return 400, "Very Poor"
+    else:
+        return 500, "Severe"
 
 
 def app():
-    st.title("AQI Prediction (No PKL)")
+    st.title("Simple AQI Prediction")
 
-    st.write("This page trains the model live and predicts AQI.")
+    st.write("This is a simple AQI prediction based only on PM2.5 value.")
 
-    # -----------------------------
-    # Load data
-    # -----------------------------
-    path = st.sidebar.text_input(
-        "Dataset path", value="data/air_quality_2015_2020.csv"
-    )
-    df = pd.read_csv(path)
+    pm25 = st.number_input("Enter PM2.5 value (µg/m³)", value=50.0)
 
-    # -----------------------------
-    # Basic preprocessing
-    # -----------------------------
-    date_col = st.selectbox("Date column", df.columns.tolist())
-    aqi_col = st.selectbox("AQI column", df.columns.tolist())
-
-    df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
-    df = df.dropna(subset=[date_col, aqi_col])
-
-    df["year"] = df[date_col].dt.year
-    df["month"] = df[date_col].dt.month
-    df["day_of_week"] = df[date_col].dt.dayofweek
-
-    numeric_features = [
-        "PM2.5", "PM10", "NO2", "SO2", "CO", "O3",
-        "year", "month", "day_of_week"
-    ]
-    numeric_features = [c for c in numeric_features if c in df.columns]
-
-    categorical_features = []
-    if "City" in df.columns:
-        categorical_features = ["City"]
-
-    # -----------------------------
-    # Train models (on the fly)
-    # -----------------------------
-    X = df[numeric_features + categorical_features]
-    y_reg = df[aqi_col]
-    y_cls = df[aqi_col].apply(make_aqi_bucket)
-
-    preprocessor = ColumnTransformer(
-        [
-            ("num", "passthrough", numeric_features),
-            ("cat", OneHotEncoder(handle_unknown="ignore"), categorical_features),
-        ]
-    )
-
-    reg_model = Pipeline(
-        [("prep", preprocessor), ("model", Ridge(alpha=1.0))]
-    )
-    cls_model = Pipeline(
-        [("prep", preprocessor), ("model", LogisticRegression(max_iter=2000))]
-    )
-
-    reg_model.fit(X, y_reg)
-    cls_model.fit(X, y_cls)
-
-    st.success("Models trained successfully")
-
-    st.divider()
-
-    # -----------------------------
-    # User input
-    # -----------------------------
-    st.subheader("Enter values for prediction")
-
-    pm25 = st.number_input("PM2.5", value=50.0)
-    pm10 = st.number_input("PM10", value=80.0)
-    no2 = st.number_input("NO2", value=30.0)
-    so2 = st.number_input("SO2", value=10.0)
-    co = st.number_input("CO", value=0.8)
-    o3 = st.number_input("O3", value=20.0)
-
-    date = st.date_input("Date")
-    city = st.text_input("City", value="Delhi") if "City" in df.columns else None
-
-    row = {
-        "PM2.5": pm25,
-        "PM10": pm10,
-        "NO2": no2,
-        "SO2": so2,
-        "CO": co,
-        "O3": o3,
-        "year": date.year,
-        "month": date.month,
-        "day_of_week": date.weekday(),
-    }
-
-    if city is not None:
-        row["City"] = city
-
-    X_new = pd.DataFrame([row])
-
-    # -----------------------------
-    # Prediction
-    # -----------------------------
-    if st.button("Predict"):
-        aqi_value = reg_model.predict(X_new)[0]
-        aqi_bucket = cls_model.predict(X_new)[0]
+    if st.button("Predict AQI"):
+        aqi, category = calculate_aqi_pm25(pm25)
 
         st.subheader("Prediction Result")
-        st.metric("Predicted AQI", f"{aqi_value:.2f}")
-        st.metric("AQI Category", aqi_bucket)
+        st.metric("Estimated AQI", aqi)
+        st.metric("AQI Category", category)
+
