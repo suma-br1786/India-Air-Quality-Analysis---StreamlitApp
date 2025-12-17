@@ -9,31 +9,95 @@ Original file is located at
 
 import streamlit as st
 import pandas as pd
-import joblib
+
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.linear_model import Ridge, LogisticRegression
+
+
+def make_aqi_bucket(aqi):
+    if aqi <= 50:
+        return "Good"
+    if aqi <= 100:
+        return "Satisfactory"
+    if aqi <= 200:
+        return "Moderate"
+    if aqi <= 300:
+        return "Poor"
+    if aqi <= 400:
+        return "Very Poor"
+    return "Severe"
 
 
 def app():
-    st.title("AQI Prediction")
+    st.title("AQI Prediction (No PKL)")
 
-    st.write("Predict AQI value or AQI category using trained models.")
+    st.write("This page trains the model live and predicts AQI.")
 
     # -----------------------------
-    # Load models
+    # Load data
     # -----------------------------
-    try:
-        reg_model = joblib.load("models/aqi_regression.pkl")
-        cls_model = joblib.load("models/aqi_classification.pkl")
-        st.success("Models loaded successfully")
-    except:
-        st.error("Model files not found. Train and save models first.")
-        return
+    path = st.sidebar.text_input(
+        "Dataset path", value="data/air_quality_2015_2020.csv"
+    )
+    df = pd.read_csv(path)
+
+    # -----------------------------
+    # Basic preprocessing
+    # -----------------------------
+    date_col = st.selectbox("Date column", df.columns.tolist())
+    aqi_col = st.selectbox("AQI column", df.columns.tolist())
+
+    df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+    df = df.dropna(subset=[date_col, aqi_col])
+
+    df["year"] = df[date_col].dt.year
+    df["month"] = df[date_col].dt.month
+    df["day_of_week"] = df[date_col].dt.dayofweek
+
+    numeric_features = [
+        "PM2.5", "PM10", "NO2", "SO2", "CO", "O3",
+        "year", "month", "day_of_week"
+    ]
+    numeric_features = [c for c in numeric_features if c in df.columns]
+
+    categorical_features = []
+    if "City" in df.columns:
+        categorical_features = ["City"]
+
+    # -----------------------------
+    # Train models (on the fly)
+    # -----------------------------
+    X = df[numeric_features + categorical_features]
+    y_reg = df[aqi_col]
+    y_cls = df[aqi_col].apply(make_aqi_bucket)
+
+    preprocessor = ColumnTransformer(
+        [
+            ("num", "passthrough", numeric_features),
+            ("cat", OneHotEncoder(handle_unknown="ignore"), categorical_features),
+        ]
+    )
+
+    reg_model = Pipeline(
+        [("prep", preprocessor), ("model", Ridge(alpha=1.0))]
+    )
+    cls_model = Pipeline(
+        [("prep", preprocessor), ("model", LogisticRegression(max_iter=2000))]
+    )
+
+    reg_model.fit(X, y_reg)
+    cls_model.fit(X, y_cls)
+
+    st.success("Models trained successfully")
 
     st.divider()
 
     # -----------------------------
-    # User input (simple)
+    # User input
     # -----------------------------
-    st.subheader("Enter pollutant values")
+    st.subheader("Enter values for prediction")
 
     pm25 = st.number_input("PM2.5", value=50.0)
     pm10 = st.number_input("PM10", value=80.0)
@@ -42,50 +106,33 @@ def app():
     co = st.number_input("CO", value=0.8)
     o3 = st.number_input("O3", value=20.0)
 
-    st.subheader("Date information")
-    date = st.date_input("Select date")
+    date = st.date_input("Date")
+    city = st.text_input("City", value="Delhi") if "City" in df.columns else None
 
-    # Time features (must match training)
-    year = date.year
-    month = date.month
-    day_of_week = date.weekday()
-
-    # Optional categorical input
-    city = st.text_input("City", value="Delhi")
-
-    # -----------------------------
-    # Build input DataFrame
-    # -----------------------------
-    X = pd.DataFrame([{
+    row = {
         "PM2.5": pm25,
         "PM10": pm10,
         "NO2": no2,
         "SO2": so2,
         "CO": co,
         "O3": o3,
-        "year": year,
-        "month": month,
-        "day_of_week": day_of_week,
-        "City": city
-    }])
+        "year": date.year,
+        "month": date.month,
+        "day_of_week": date.weekday(),
+    }
 
-    st.divider()
+    if city is not None:
+        row["City"] = city
+
+    X_new = pd.DataFrame([row])
 
     # -----------------------------
     # Prediction
     # -----------------------------
-    if st.button("Predict AQI"):
-        try:
-            # Regression
-            aqi_value = reg_model.predict(X)[0]
+    if st.button("Predict"):
+        aqi_value = reg_model.predict(X_new)[0]
+        aqi_bucket = cls_model.predict(X_new)[0]
 
-            # Classification
-            aqi_bucket = cls_model.predict(X)[0]
-
-            st.subheader("Prediction Results")
-            st.metric("Predicted AQI", f"{aqi_value:.2f}")
-            st.metric("AQI Category", aqi_bucket)
-
-        except Exception as e:
-            st.error("Prediction failed. Feature mismatch with training data.")
-            st.code(str(e))
+        st.subheader("Prediction Result")
+        st.metric("Predicted AQI", f"{aqi_value:.2f}")
+        st.metric("AQI Category", aqi_bucket)
