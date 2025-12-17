@@ -60,33 +60,42 @@ def app():
         st.pyplot(fig)
 
     # ---------------- Outlier Treatment ----------------
-    if check_outliers:
-        st.subheader("📊 Outlier Treatment (IQR Method)")
+    # ---------------- Outlier Treatment ----------------
+if check_outliers:
+    st.subheader("📊 Outlier Detection & Treatment (IQR Method)")
 
-        numeric_cols = df.select_dtypes(include=[np.number]).columns
+    numeric_cols = df.select_dtypes(include=[np.number]).columns
 
-        for col in numeric_cols:
-            Q1 = np.percentile(df[col], 25)
-            Q3 = np.percentile(df[col], 75)
-            IQR = Q3 - Q1
+    outlier_summary = []
 
-            lower = Q1 - 1.5 * IQR
-            upper = Q3 + 1.5 * IQR
+    for col in numeric_cols:
+        Q1 = np.percentile(df[col], 25)
+        Q3 = np.percentile(df[col], 75)
+        IQR = Q3 - Q1
 
-            df[col] = np.where(df[col] < lower, lower, df[col])
-            df[col] = np.where(df[col] > upper, upper, df[col])
+        lower = Q1 - 1.5 * IQR
+        upper = Q3 + 1.5 * IQR
 
-        st.success("✅ Outliers capped successfully!")
+        # Count outliers before capping
+        outlier_count = ((df[col] < lower) | (df[col] > upper)).sum()
 
-        st.subheader("📦 Boxplots")
+        # Cap outliers
+        df[col] = np.where(df[col] < lower, lower, df[col])
+        df[col] = np.where(df[col] > upper, upper, df[col])
 
-        for col in numeric_cols:
-            fig, ax = plt.subplots(figsize=(6, 4))
-            ax.boxplot(df[col], patch_artist=True,
-                       boxprops=dict(facecolor='lightblue'))
-            ax.set_title(f"Boxplot for {col}")
-            ax.grid(axis='y', linestyle='--', alpha=0.5)
-            st.pyplot(fig)
+        outlier_summary.append({
+            "Column": col,
+            "Outliers Detected": outlier_count
+        })
+
+    # Display summary table
+    outlier_df = pd.DataFrame(outlier_summary)
+
+    st.subheader("🚨 Outlier Detection Summary")
+    st.dataframe(outlier_df, use_container_width=True)
+
+    st.success("✅ Outliers detected and treated successfully!")
+
 
     # ---------------- Descriptive Statistics ----------------
     if check_statistics:
