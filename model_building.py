@@ -3,7 +3,7 @@ import pandas as pd
 import joblib
 
 # Load model
-model = joblib.load("models/simple_aqi_model.pkl")
+model = joblib.load("models/aqi_model.pkl")
 
 st.title("🌿 AQI Prediction App")
 st.write("Predict Air Quality Index (AQI) based on pollutants, date, and city.")
