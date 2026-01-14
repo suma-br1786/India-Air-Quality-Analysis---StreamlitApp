@@ -1,15 +1,17 @@
 import streamlit as st
 import pandas as pd
-import joblib
-
-# Load model
-model = joblib.load("models/aqi_model.pkl")
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
+import numpy as np
 
 st.title("🌿 AQI Prediction App")
-st.write("Predict Air Quality Index (AQI) based on pollutants, date, and city.")
+st.write("Enter pollutant values, date, and city to predict AQI.")
 
 # -----------------------------
-# Sidebar for date & city
+# Sidebar for city and date
 # -----------------------------
 st.sidebar.header("Location & Date")
 city = st.sidebar.text_input("City", value="Delhi")
@@ -17,7 +19,7 @@ date = st.sidebar.date_input("Select Date")
 year, month, day_of_week = date.year, date.month, date.weekday()
 
 # -----------------------------
-# Pollutant Inputs in Columns
+# Pollutant Inputs
 # -----------------------------
 st.header("Pollutant Values")
 col1, col2, col3 = st.columns(3)
@@ -38,7 +40,53 @@ with col3:
     o3 = st.number_input("O3", value=20.0)
 
 # -----------------------------
-# Prediction Button
+# Generate sample data to train simple model
+# -----------------------------
+np.random.seed(42)
+sample_size = 500
+cities = ['Delhi', 'Mumbai', 'Kolkata', 'Chennai']
+
+sample_data = pd.DataFrame({
+    'PM2.5': np.random.randint(10, 300, sample_size),
+    'PM10': np.random.randint(20, 400, sample_size),
+    'NO': np.random.randint(0, 100, sample_size),
+    'NO2': np.random.randint(0, 100, sample_size),
+    'NOx': np.random.randint(0, 120, sample_size),
+    'NH3': np.random.randint(0, 50, sample_size),
+    'CO': np.random.uniform(0.1, 3, sample_size),
+    'SO2': np.random.randint(0, 50, sample_size),
+    'O3': np.random.randint(0, 200, sample_size),
+    'year': np.random.randint(2015, 2021, sample_size),
+    'month': np.random.randint(1, 13, sample_size),
+    'day_of_week': np.random.randint(0, 7, sample_size),
+    'City': np.random.choice(cities, sample_size)
+})
+
+# Simple synthetic AQI target
+sample_data['AQI'] = (
+    sample_data['PM2.5']*0.5 + sample_data['PM10']*0.3 + sample_data['NO2']*0.2
+    + sample_data['CO']*10 + sample_data['O3']*0.1 + np.random.randint(-10,10,sample_size)
+)
+
+X = sample_data.drop(columns='AQI')
+y = sample_data['AQI']
+
+# Preprocessing for City
+preprocessor = ColumnTransformer(
+    transformers=[('city', OneHotEncoder(handle_unknown='ignore'), ['City'])],
+    remainder='passthrough'
+)
+
+# Train RandomForest pipeline
+pipeline = Pipeline([
+    ('preprocessor', preprocessor),
+    ('regressor', RandomForestRegressor(n_estimators=50, max_depth=15, random_state=42))
+])
+
+pipeline.fit(X, y)
+
+# -----------------------------
+# Predict AQI for user input
 # -----------------------------
 if st.button("Predict AQI"):
     input_df = pd.DataFrame([{
@@ -49,9 +97,9 @@ if st.button("Predict AQI"):
         "day_of_week": day_of_week, "City": city
     }])
     
-    aqi_pred = model.predict(input_df)[0]
-    
-    # Determine AQI category
+    aqi_pred = pipeline.predict(input_df)[0]
+
+    # AQI category
     if aqi_pred <= 50:
         category = "Good"
         color = "green"
@@ -70,7 +118,6 @@ if st.button("Predict AQI"):
     else:
         category = "Severe"
         color = "darkred"
-    
-    # Display results with color
+
     st.markdown(f"### Predicted AQI: **{aqi_pred:.2f}**")
     st.markdown(f"### AQI Category: <span style='color:{color}'>{category}</span>", unsafe_allow_html=True)
