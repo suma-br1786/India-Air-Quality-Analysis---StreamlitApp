@@ -56,7 +56,7 @@ def app():
     # Evaluate model on test data
     y_pred = model.predict(X_test)
     r2 = r2_score(y_test, y_pred)
-    rmse = mean_squared_error(y_test, y_pred, squared=False)
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
 
     st.write(f"### Model performance on test set:")
     st.write(f"R² score: {r2:.3f}")
